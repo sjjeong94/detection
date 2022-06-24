@@ -88,13 +88,21 @@ class CenterNet(nn.Module):
         super().__init__()
         self.backbone = MobileNetV2()
         self.neck = FPN(24, 32, 96, 1280, 256)
-        self.head = CenterNetHead(256, 256, 4 + num_classes)
+
+        self.head_o = CenterNetHead(256, 256, 2)
+        self.head_s = CenterNetHead(256, 256, 2)
+        self.head_k = CenterNetHead(256, 256, num_classes)
 
     def forward(self, x):
         x = self.backbone(x)
         x = self.neck(*x[-4:])
-        x = self.head(x[-4])
-        return x
+
+        out_o = self.head_o(x[-4])
+        out_s = self.head_s(x[-4])
+        out_k = self.head_k(x[-4])
+
+        out = torch.concat([out_o, out_s, out_k], axis=1)
+        return out
 
 
 if __name__ == '__main__':
@@ -120,3 +128,7 @@ if __name__ == '__main__':
     detector = CenterNet()
     out = detector(x)
     print(out.shape)
+    print()
+    # print(detector)
+
+    torch.save(detector.state_dict(), 'net.pth')

@@ -74,7 +74,7 @@ def label_encode(image, target, num_classes=91, R=4):
     gt_k = np.zeros((num_classes, h, w), dtype=np.float32)
     gt_o = np.zeros((2, h, w), dtype=np.float32)
     gt_s = np.zeros((2, h, w), dtype=np.float32)
-
+    
     for t in target:
         c = t['category_id']
         bx, by, bw, bh = t['bbox']
@@ -132,7 +132,7 @@ def label_encode(image, target, num_classes=91, R=4):
         gt_s[0, eyi, exi] = ew
         gt_s[1, eyi, exi] = eh
 
-        gt = np.concatenate([gt_o, gt_s, gt_k], 0)
+    gt = np.concatenate([gt_o, gt_s, gt_k], 0)
 
     return gt
 
