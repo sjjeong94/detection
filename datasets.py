@@ -1,6 +1,6 @@
-import cv2
+import copy
 import numpy as np
-from torchvision.datasets import CocoDetection
+import torchvision
 
 COCO_INSTANCE_CATEGORY_NAMES = [
     '__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
@@ -18,34 +18,17 @@ COCO_INSTANCE_CATEGORY_NAMES = [
 ]
 
 
-def test():
-    mode = 'val'
-    if mode == 'train':
-        root = '../data/coco/train2017'
-        annFile = '../data/coco/annotations/instances_train2017.json'
-    else:
-        root = '../data/coco/val2017'
-        annFile = '../data/coco/annotations/instances_val2017.json'
+class CocoDetection(torchvision.datasets.CocoDetection):
+    category_names = COCO_INSTANCE_CATEGORY_NAMES
 
-    coco = CocoDetection(root, annFile)
+    def __init__(self, root, annFile, transform=None):
+        super().__init__(root, annFile)
+        self.transform = transform
 
-    for i in range(len(coco)):
-        image, data = coco[i]
+    def __getitem__(self, idx):
+        image, label = super().__getitem__(idx)
         image = np.asarray(image)
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        for d in data:
-            cat_id = d['category_id']
-            bbox = list(map(int, d['bbox']))
-            p = (bbox[0], bbox[1])
-            label = '%d %s' % (cat_id, COCO_INSTANCE_CATEGORY_NAMES[cat_id])
-            cv2.putText(image, label,  p, 0, 0.5, (0, 255, 0), 1)
-            cv2.rectangle(image, bbox, (0, 255, 0), 1)
-
-        cv2.imshow('image', image)
-        key = cv2.waitKey(0)
-        if key == 27:
-            break
-
-
-if __name__ == '__main__':
-    test()
+        label = copy.deepcopy(label)
+        if self.transform:
+            image, label = self.transform(image, label)
+        return image, label
