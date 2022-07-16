@@ -65,10 +65,10 @@ def test_dataset2():
     print()
 
 
-def visualize_gt(gt):
+def visualize_gt(gt, scale=255):
     views = []
     for view in gt:
-        view = np.clip(view, 0, 1) * 255
+        view = np.clip(view * scale, 0, 255)
         view = view.astype(np.uint8)
         view[:, 0] = 64
         views.append(view)
@@ -76,10 +76,10 @@ def visualize_gt(gt):
     return views
 
 
-def visualize_gt2(gt):
+def visualize_gt2(gt, scale=255):
     views = []
     for view in gt:
-        view = np.clip(view, 0, 1) * 255
+        view = np.clip(view * scale, 0, 255)
         view = view.astype(np.uint8)
         view[:, 0] = 64
         view[0, :] = 64
@@ -105,6 +105,8 @@ def test_encode_decode():
 
     dataset = datasets.CocoDetection(root, annFile, T_compose)
 
+    print(len(dataset.category_names))
+
     idx = 0
     while True:
         image, target = dataset[idx]
@@ -121,8 +123,10 @@ def test_encode_decode():
         encoded = transforms.label_encode(image, target)
         decoded = transforms.label_decode(encoded)
 
-        reg = visualize_gt(encoded[:4])
+        reg = visualize_gt(encoded[:4], scale=1)
         cv2.imshow('gt_reg', reg)
+        cen = visualize_gt(encoded[4:5])
+        cv2.imshow('gt_centerness', cen)
         cls = visualize_gt2(encoded[5:])
         cv2.imshow('gt_cls', cls)
 
@@ -236,8 +240,8 @@ def test_dataloader():
 
 
 if __name__ == '__main__':
-    test_dataset()
-    test_dataset2()
+    # test_dataset()
+    # test_dataset2()
     test_encode_decode()
-    test_transform()
-    test_dataloader()
+    # test_transform()
+    # test_dataloader()

@@ -50,7 +50,7 @@ class FPN(nn.Module):
     def __init__(self, in_ch2, in_ch3, in_ch4, in_ch5, out_ch=256):
         super().__init__()
         self.up = nn.UpsamplingNearest2d(scale_factor=2)
-        self.act = nn.ReLU6(inplace=True)
+        self.act = nn.ReLU(inplace=True)
         self.inner2 = ConvBN(in_ch2, out_ch, 1, 1)
         self.inner3 = ConvBN(in_ch3, out_ch, 1, 1)
         self.inner4 = ConvBN(in_ch4, out_ch, 1, 1)
@@ -73,13 +73,15 @@ class FPN(nn.Module):
 class CenterNetHead(nn.Module):
     def __init__(self, in_ch, mid_ch, out_ch):
         super().__init__()
-        self.act = nn.ReLU6(inplace=True)
+        self.act = nn.ReLU(inplace=True)
         self.conv1 = ConvBN(in_ch, mid_ch, 3, 1, 1)
-        self.conv2 = nn.Conv2d(mid_ch, out_ch, 1, 1)
+        self.conv2 = ConvBN(mid_ch, mid_ch, 3, 1, 1)
+        self.conv3 = nn.Conv2d(mid_ch, out_ch, 1, 1)
 
     def forward(self, x):
         x = self.act(self.conv1(x))
-        x = self.conv2(x)
+        x = self.act(self.conv2(x))
+        x = self.conv3(x)
         return x
 
 
@@ -89,19 +91,18 @@ class CenterNet(nn.Module):
         self.backbone = MobileNetV2()
         self.neck = FPN(24, 32, 96, 1280, 256)
 
-        self.head_o = CenterNetHead(256, 256, 2)
-        self.head_s = CenterNetHead(256, 256, 2)
+        self.head_r = CenterNetHead(256, 256, 4)
+        # background -> centerness
         self.head_k = CenterNetHead(256, 256, num_classes)
 
     def forward(self, x):
         x = self.backbone(x)
         x = self.neck(*x[-4:])
 
-        out_o = self.head_o(x[-4])
-        out_s = self.head_s(x[-4])
+        out_o = torch.exp(self.head_r(x[-4]))
         out_k = self.head_k(x[-4])
 
-        out = torch.concat([out_o, out_s, out_k], axis=1)
+        out = torch.concat([out_o, out_k], axis=1)
         return out
 
 

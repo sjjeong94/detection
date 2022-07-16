@@ -72,70 +72,31 @@ def label_encode(image, target, num_classes=91, R=4):
     h, w = H // R, W // R
 
     gt_k = np.zeros((num_classes, h, w), dtype=np.float32)
-    gt_o = np.zeros((2, h, w), dtype=np.float32)
-    gt_s = np.zeros((2, h, w), dtype=np.float32)
-    
-    for t in target:
-        c = t['category_id']
-        bx, by, bw, bh = t['bbox']
-        ex = (bx + bw / 2) / R
-        ey = (by + bh / 2) / R
-        ew = bw / R
-        eh = bh / R
-        exi = int(ex)
-        eyi = int(ey)
-        exo = ex - exi
-        eyo = ey - eyi
+    gt_r = np.zeros((4, h, w), dtype=np.float32)
 
-        # TODO: check radius
-        radius = int(math.sqrt(ew * eh)) // 4
-        if radius < 1:
-            radius = 1
-        diameter = radius * 2 + 1
+    for data in target:
+        c = data['category_id']
+        bx, by, bw, bh = np.asarray(data['bbox']) / R
+        l, t, r, b = int(bx), int(by), int(bx+bw), int(by+bh)
 
-        kernel1d = cv2.getGaussianKernel(diameter, diameter / 6)
-        kernel1d /= max(kernel1d)
-        kernel2d = np.outer(kernel1d, kernel1d.T)
+        for y in range(t, b):
+            for x in range(l, r):
+                if x >= 0 and x < w and y >= 0 and y < h:
+                    l_ = x - l
+                    t_ = y - t
+                    r_ = r - x
+                    b_ = b - y
+                    v = np.sqrt(min(l_, r_)/max(l_, r_)*min(t_, b_)/max(t_, b_))
+                    if gt_k[0, y, x] < v:
+                        gt_k[0, y, x] = v
+                        gt_r[0, y, x] = l_
+                        gt_r[1, y, x] = t_
+                        gt_r[2, y, x] = r_
+                        gt_r[3, y, x] = b_       
 
-        kx0 = exi - radius
-        kx1 = exi + radius + 1
-        ky0 = eyi - radius
-        ky1 = eyi + radius + 1
-
-        if kx0 < 0:
-            kx0_ = -kx0
-            kx0 = 0
-        else:
-            kx0_ = 0
-        if kx1 > w:
-            kx1_ = diameter - kx1 + w
-            kx1 = w
-        else:
-            kx1_ = diameter
-        if ky0 < 0:
-            ky0_ = -ky0
-            ky0 = 0
-        else:
-            ky0_ = 0
-        if ky1 > h:
-            ky1_ = diameter - ky1 + h
-            ky1 = h
-        else:
-            ky1_ = diameter
-
-        gt_k[c, ky0:ky1, kx0:kx1] = np.maximum(
-            gt_k[c, ky0:ky1, kx0:kx1], kernel2d[ky0_:ky1_, kx0_:kx1_])
-
-        gt_k[c, eyi, exi] = 1
-        gt_o[0, eyi, exi] = exo
-        gt_o[1, eyi, exi] = eyo
-        gt_s[0, eyi, exi] = ew
-        gt_s[1, eyi, exi] = eh
-
-    gt = np.concatenate([gt_o, gt_s, gt_k], 0)
+    gt = np.concatenate([gt_r, gt_k], 0)
 
     return gt
-
 
 class KeyPointExtractor(torch.nn.Module):
     def __init__(self):
@@ -149,30 +110,28 @@ class KeyPointExtractor(torch.nn.Module):
 
 def label_decode(gt, R=4):
     gt_k = gt[4:]
-    gt_o = gt[0:2]
-    gt_s = gt[2:4]
+    gt_r = gt[0:4]
 
     kpe = KeyPointExtractor()(torch.from_numpy(gt_k).unsqueeze(0)).numpy().squeeze()
 
-    points = np.where(kpe > 0.5)
+    points = np.where(kpe[0] > 0.25)
     decoded = []
-    for c, x, y in zip(points[0], points[2], points[1]):
-        xf = (x + gt_o[0, y, x])
-        yf = (y + gt_o[1, y, x])
+    for x, y in zip(points[1], points[0]):
+        l = gt[0, y, x]
+        t = gt[1, y, x]
+        r = gt[2, y, x]
+        b = gt[3, y, x]
 
-        wf = gt_s[0, y, x]
-        hf = gt_s[1, y, x]
-
-        bx = (xf - wf / 2) * R
-        by = (yf - hf / 2) * R
-        bw = wf * R
-        bh = hf * R
+        bx = (x - l) * R
+        by = (y - t) * R
+        bw = (l + r) * R
+        bh = (t + b) * R
 
         bbox = [bx, by, bw, bh]
 
         decoded.append({
             'bbox': bbox,
-            'category_id': c,
+            'category_id': 0,
         })
     
     return decoded

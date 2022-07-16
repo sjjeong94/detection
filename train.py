@@ -22,66 +22,52 @@ def set_seed(seed):
         torch.backends.cudnn.deterministic = True
 
 
-class Loss(nn.Module):
-    def __init__(self, alpha=2, beta=4):
+class IOULoss(nn.Module):
+    def __init__(self):
         super().__init__()
-        self.alpha = alpha
-        self.beta = beta
-        self.l1loss = nn.L1Loss(reduction='sum')
 
     def forward(self, out, gt):
+        o_l, o_t, o_r, o_b = out[:, 0], out[:, 1], out[:, 2], out[:, 3]
+        g_l, g_t, g_r, g_b = gt[:, 0], gt[:, 1], gt[:, 2], gt[:, 3]
 
-        out_k = out[:, 4:]
-        out_ox = out[:, 0]
-        out_oy = out[:, 1]
-        out_sx = out[:, 2]
-        out_sy = out[:, 3]
+        filt = g_l > 0
+        o_l, o_t, o_r, o_b = o_l[filt], o_t[filt], o_r[filt], o_b[filt]
+        g_l, g_t, g_r, g_b = g_l[filt], g_t[filt], g_r[filt], g_b[filt]
 
-        gt_k = gt[:, 4:]
-        gt_ox = gt[:, 0]
-        gt_oy = gt[:, 1]
-        gt_sx = gt[:, 2]
-        gt_sy = gt[:, 3]
+        o_a = (o_t + o_b) * (o_l + o_r)
+        g_a = (g_t + g_b) * (g_l + g_r)
 
-        positive = gt_k == 1
-        negative = positive == False
+        iw = torch.minimum(o_l, g_l) + torch.minimum(o_r, g_r)
+        ih = torch.minimum(o_t, g_t) + torch.minimum(o_b, g_b)
+        inter = iw * ih
+        union = o_a + g_a - inter
+        iou = inter / (union + 1e-9)
+        loss = -torch.log(iou)
+        return loss.mean()
 
-        out_k = torch.sigmoid(out_k)
-        out_k_pos = out_k[positive]
-        out_k_neg = out_k[negative]
-        gt_k_neg = gt_k[negative]
 
-        N = len(out_k_pos)
+class Loss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.bce = nn.BCEWithLogitsLoss()
+        self.iou = IOULoss()
 
-        Lk_pos = torch.sum((1 - out_k_pos)**self.alpha * torch.log(out_k_pos))
-        Lk_neg = torch.sum((1 - gt_k_neg)**self.beta *
-                           out_k_neg ** self.alpha * torch.log(1 - out_k_neg))
-        Lk = -(Lk_pos + Lk_neg) / (N + 1e-6)
+    def forward(self, out, gt):
+        # centerness
+        gt_c = gt[:, 4]
+        out_c = out[:, 4]
+        loss_c = self.bce(out_c, gt_c)
 
-        positive_ = gt_sx > 0
+        # bbox (TODO: iou loss)
+        gt_r = gt[:, :4]
+        out_r = out[:, :4]
+        loss_r = self.iou(out_r, gt_r)
 
-        out_ox_pos = out_ox[positive_]
-        out_oy_pos = out_oy[positive_]
-        gt_ox_pos = gt_ox[positive_]
-        gt_oy_pos = gt_oy[positive_]
+        loss = loss_c + loss_r
 
-        Lo = (self.l1loss(out_ox_pos, gt_ox_pos) +
-              self.l1loss(out_oy_pos, gt_oy_pos)) / (N + 1e-6)
-
-        out_sx_pos = out_sx[positive_]
-        out_sy_pos = out_sy[positive_]
-        gt_sx_pos = gt_sx[positive_]
-        gt_sy_pos = gt_sy[positive_]
-
-        Ls = (self.l1loss(out_sx_pos, gt_sx_pos) +
-              self.l1loss(out_sy_pos, gt_sy_pos)) / (N + 1e-6)
-        Ls *= 0.1
-
-        loss = Lk + Lo + Ls
-
-        self.loss_k = Lk.detach()
-        self.loss_o = Lo.detach()
-        self.loss_s = Ls.detach()
+        self.loss_c = loss_c.detach()
+        self.loss_r = loss_r.detach()
+        self.loss_s = loss_r.detach()
 
         return loss
 
@@ -212,8 +198,8 @@ def train(
 
                 losses += loss.detach()
 
-                losses_k += criterion.loss_k
-                losses_o += criterion.loss_o
+                losses_k += criterion.loss_c
+                losses_o += criterion.loss_r
                 losses_s += criterion.loss_s
 
         loss_val = losses / len(val_loader)
@@ -239,6 +225,7 @@ def train(
 
 if __name__ == '__main__':
     train(
-        logs_root='logs/coco/test',
-        epochs=5
+        logs_root='logs/coco/fcos',
+        epochs=3,
+        learning_rate=0.0003,
     )

@@ -42,7 +42,7 @@ class Module:
 
 
 def visualze_eval(
-    model_path='./logs/coco/test/models/model_009.pt',
+    model_path='./logs/coco/fcos/models/model_003.pt',
     size=(320, 320),
 ):
 
@@ -63,8 +63,10 @@ def visualze_eval(
 
         out = module(image)
 
-        reg = tests.visualize_gt(out[:4] * 0.01)
+        reg = tests.visualize_gt(out[:4], scale=1)
         cv2.imshow('out_reg', reg)
+        cen = tests.visualize_gt(out[4:5])
+        cv2.imshow('out_cen', cen)
         cls = tests.visualize_gt2(out[5:])
         cv2.imshow('out_cls', cls)
 
