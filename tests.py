@@ -99,8 +99,9 @@ def test_encode_decode():
         annFile = '../data/coco/annotations/instances_val2017.json'
 
     T_compose = transforms.Compose([
+        transforms.RandomResize(320, 480),
+        transforms.RandomCrop(320),
         transforms.RandomHorizontalFlip(),
-        transforms.Resize((320, 320))
     ])
 
     dataset = datasets.CocoDetection(root, annFile, T_compose)
@@ -119,6 +120,7 @@ def test_encode_decode():
             label = '%d %s' % (cat_id, dataset.category_names[cat_id])
             cv2.putText(image1, label,  p, 0, 0.5, (0, 255, 0), 1)
             cv2.rectangle(image1, bbox, (0, 255, 0), 1)
+            cv2.rectangle(image2, bbox, (0, 255, 0), 1)
 
         encoded = transforms.label_encode(image, target)
         decoded = transforms.label_decode(encoded)

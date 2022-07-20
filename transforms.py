@@ -44,6 +44,44 @@ class Resize:
         return image, target
 
 
+class RandomResize:
+    def __init__(self, min_size, max_size=None):
+        self.min_size = min_size
+        if max_size is None:
+            max_size = min_size
+        self.max_size = max_size
+
+    def __call__(self, image, target):
+        h, w, c = image.shape
+        s = random.randint(self.min_size, self.max_size)
+        if h < w:
+            wr, hr = round(s*w/h), s
+        else:
+            wr, hr = s, round(s*h/w)
+        size = (wr, hr)
+        ws, hs = wr/w, hr/h 
+        image = cv2.resize(image, size, interpolation=cv2.INTER_LANCZOS4)
+        for t in target:
+            bx, by, bw, bh = t['bbox']
+            t['bbox'] = [bx*ws, by*hs, bw*ws, bh*hs]
+        return image, target
+
+class RandomCrop:
+    def __init__(self, size):
+        self.size = size
+
+    def __call__(self, image, target):
+        h, w, c = image.shape
+        xs = random.randint(0, w - self.size)
+        ys = random.randint(0, h - self.size)
+        xe = xs + self.size
+        ye = ys + self.size
+        image = image[ys:ye, xs:xe]
+        for t in target:
+            bx, by, bw, bh = t['bbox']
+            t['bbox'] = [bx-xs, by-ys, bw, bh]
+        return image, target
+
 class ToTensor:
     def __init__(self):
         return
@@ -77,22 +115,25 @@ def label_encode(image, target, num_classes=91, R=4):
     for data in target:
         c = data['category_id']
         bx, by, bw, bh = np.asarray(data['bbox']) / R
-        l, t, r, b = int(bx), int(by), int(bx+bw), int(by+bh)
+        l, t, r, b = bx, by, bx+bw, by+bh
+        y0, y1, x0, x1 = int(t), int(b), int(l), int(r)
 
-        for y in range(t, b):
-            for x in range(l, r):
+        for y in range(y0, y1):
+            for x in range(x0, x1):
                 if x >= 0 and x < w and y >= 0 and y < h:
-                    l_ = x - l
-                    t_ = y - t
-                    r_ = r - x
-                    b_ = b - y
-                    v = np.sqrt(min(l_, r_)/max(l_, r_)*min(t_, b_)/max(t_, b_))
+                    l_ = max(x - l, 1e-6)
+                    t_ = max(y - t, 1e-6)
+                    r_ = max(r - x, 1e-6)
+                    b_ = max(b - y, 1e-6)
+                    v = math.sqrt(min(l_, r_)/max(l_, r_) * min(t_, b_)/max(t_, b_))
                     if gt_k[0, y, x] < v:
                         gt_k[0, y, x] = v
                         gt_r[0, y, x] = l_
                         gt_r[1, y, x] = t_
                         gt_r[2, y, x] = r_
-                        gt_r[3, y, x] = b_       
+                        gt_r[3, y, x] = b_ 
+
+                    gt_k[c, y, x] = 1      
 
     gt = np.concatenate([gt_r, gt_k], 0)
 
@@ -109,18 +150,21 @@ class KeyPointExtractor(torch.nn.Module):
         return x
 
 def label_decode(gt, R=4):
-    gt_k = gt[4:]
+    gt_k = gt[4:5]
     gt_r = gt[0:4]
+    gt_c = gt[5:]
 
-    kpe = KeyPointExtractor()(torch.from_numpy(gt_k).unsqueeze(0)).numpy().squeeze()
+    a = gt_k * gt_c
 
-    points = np.where(kpe[0] > 0.25)
+    kpe = KeyPointExtractor()(torch.from_numpy(a).unsqueeze(0)).numpy().squeeze()
+    
+    points = np.where(kpe > 0.25)
     decoded = []
-    for x, y in zip(points[1], points[0]):
-        l = gt[0, y, x]
-        t = gt[1, y, x]
-        r = gt[2, y, x]
-        b = gt[3, y, x]
+    for c, y, x in zip(points[0], points[1], points[2]):
+        l = gt_r[0, y, x]
+        t = gt_r[1, y, x]
+        r = gt_r[2, y, x]
+        b = gt_r[3, y, x]
 
         bx = (x - l) * R
         by = (y - t) * R
@@ -131,7 +175,7 @@ def label_decode(gt, R=4):
 
         decoded.append({
             'bbox': bbox,
-            'category_id': 0,
+            'category_id': c + 1,
         })
     
     return decoded
