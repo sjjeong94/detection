@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
+from torchvision.ops import sigmoid_focal_loss
 
 import losses
 import models
@@ -30,10 +31,12 @@ class Loss(nn.Module):
         self.iou = losses.GIOULoss()
 
     def forward(self, out, gt):
-        # class loss (TODO: focal loss)
+        # class loss
         gt_cls = gt[:, 5:]
         out_cls = out[:, 5:]
-        loss_cls = self.bce(out_cls, gt_cls)
+        # loss_cls = self.bce(out_cls, gt_cls)
+        N_pos = max(1, torch.sum(gt_cls))
+        loss_cls = sigmoid_focal_loss(out_cls, gt_cls, reduction='sum') / N_pos
 
         # bbox
         gt_reg = gt[:, :4]
@@ -154,7 +157,7 @@ def train(
             x = x.to(device)
             y = y.to(device)
 
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
 
             out = net(x)
             loss = criterion(out, y)
@@ -211,7 +214,6 @@ def train(
 
 if __name__ == '__main__':
     train(
-        logs_root='logs/coco/fcos',
-        learning_rate=0.001,
+        logs_root='logs/coco/fcos2',
         epochs=10,
     )

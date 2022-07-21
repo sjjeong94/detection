@@ -42,7 +42,7 @@ class Module:
 
 
 def visualze_eval(
-    model_path='./logs/coco/fcos/models/model_005.pt',
+    model_path='./logs/coco/fcos2/models/model_010.pt',
     size=(320, 320),
 ):
 
