@@ -70,39 +70,43 @@ class FPN(nn.Module):
         return o2, o3, o4, o5
 
 
-class CenterNetHead(nn.Module):
+class Head(nn.Module):
     def __init__(self, in_ch, mid_ch, out_ch):
         super().__init__()
         self.act = nn.ReLU(inplace=True)
         self.conv1 = ConvBN(in_ch, mid_ch, 3, 1, 1)
         self.conv2 = ConvBN(mid_ch, mid_ch, 3, 1, 1)
-        self.conv3 = nn.Conv2d(mid_ch, out_ch, 1, 1)
+        self.conv3 = ConvBN(mid_ch, mid_ch, 3, 1, 1)
+        self.conv4 = nn.Conv2d(mid_ch, out_ch, 3, 1, 1)
 
     def forward(self, x):
         x = self.act(self.conv1(x))
         x = self.act(self.conv2(x))
-        x = self.conv3(x)
+        x = self.act(self.conv3(x))
+        x = self.conv4(x)
         return x
 
 
-class CenterNet(nn.Module):
-    def __init__(self, num_classes=91):
+class Detector(nn.Module):
+    def __init__(self, num_classes=90):
         super().__init__()
         self.backbone = MobileNetV2()
         self.neck = FPN(24, 32, 96, 1280, 256)
 
-        self.head_r = CenterNetHead(256, 256, 4)
-        # background -> centerness
-        self.head_k = CenterNetHead(256, 256, num_classes)
+        self.head_reg = Head(256, 256, 4 + 1)
+        self.head_cls = Head(256, 256, num_classes)
 
     def forward(self, x):
         x = self.backbone(x)
         x = self.neck(*x[-4:])
 
-        out_o = torch.exp(self.head_r(x[-4]))
-        out_k = self.head_k(x[-4])
+        out_reg = self.head_reg(x[-4])
+        out_cls = self.head_cls(x[-4])
 
-        out = torch.concat([out_o, out_k], axis=1)
+        out = torch.concat([
+            out_reg[:, :4].relu(),
+            out_reg[:, 4:5],
+            out_cls], axis=1)
         return out
 
 
@@ -110,7 +114,7 @@ if __name__ == '__main__':
     x = torch.randn(8, 3, 320, 320)
     backbone = MobileNetV2()
     neck = FPN(24, 32, 96, 1280, 256)
-    head = CenterNetHead(256, 256, 91)
+    head = Head(256, 256, 91)
     outs = backbone(x)
     print(backbone)
     for out in outs:
@@ -126,7 +130,7 @@ if __name__ == '__main__':
     print(out.shape)
     print()
 
-    detector = CenterNet()
+    detector = Detector()
     out = detector(x)
     print(out.shape)
     print()

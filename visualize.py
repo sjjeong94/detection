@@ -12,7 +12,7 @@ class Module:
     def __init__(self, model_path):
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        net = models.CenterNet()
+        net = models.Detector()
 
         checkpoint = torch.load(model_path)
         net.load_state_dict(checkpoint['model'])
@@ -42,8 +42,8 @@ class Module:
 
 
 def visualze_eval(
-    model_path='./logs/coco/fcos2/models/model_010.pt',
-    size=(320, 320),
+    model_path='./logs/coco/fcos3/models/model_015.pt',
+    size=(512, 512),
 ):
 
     module = Module(model_path)

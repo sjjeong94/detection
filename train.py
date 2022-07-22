@@ -84,7 +84,7 @@ def train(
     logger.addHandler(file_handler)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net = models.CenterNet()
+    net = models.Detector()
     net = net.to(device)
 
     optimizer = torch.optim.SGD(
@@ -214,6 +214,7 @@ def train(
 
 if __name__ == '__main__':
     train(
-        logs_root='logs/coco/fcos2',
-        epochs=10,
+        logs_root='logs/coco/fcos3',
+        learning_rate=0.0001,
+        epochs=15,
     )
